@@ -22,7 +22,7 @@ int motorBState = 0;
 // 1 = Forward movement
 // 0 = Backward movement
 int motorAdirection = 1;
-int motorBdirection = 1;
+int motorBdirection = 0;
 
 // Motor speed
 int motorAspeed = 190;
@@ -87,40 +87,41 @@ String getValue(String data, String key) {
   return "";
 }
 
-
 void motorAControl() {
   if (motorAState == 1) {
     if (motorAdirection == 1) {
-      digitalWrite(motor1Pin2, LOW);
-      ledcWrite(pwmChannel1, motorAspeed);
+      // Forward direction
+      digitalWrite(motor1Pin2, LOW);     // Pin2 LOW for forward
+      ledcWrite(pwmChannel1, motorAspeed);  // PWM speed control
     } else if (motorAdirection == 0) {
-      digitalWrite(motor1Pin2, motorAspeed);
-      ledcWrite(pwmChannel1, LOW);
-    } else {
-      digitalWrite(motor1Pin2, LOW);
-      ledcWrite(pwmChannel1, LOW);
+      // Backward direction
+      digitalWrite(motor1Pin2, HIGH);    // Pin2 HIGH for backward
+      int invertedSpeed = 255 - motorAspeed;  // Invert the speed
+      ledcWrite(pwmChannel1, invertedSpeed);  // PWM speed control
     }
   } else {
+    // Motor is OFF
     digitalWrite(motor1Pin2, LOW);
-    ledcWrite(pwmChannel1, LOW);
+    ledcWrite(pwmChannel1, LOW);  // Set PWM duty cycle to 0
   }
 }
 
 void motorBControl() {
   if (motorBState == 1) {
     if (motorBdirection == 1) {
-      digitalWrite(motor2Pin2, LOW);
-      ledcWrite(pwmChannel2, motorBspeed);
+      // Forward direction
+      digitalWrite(motor2Pin2, LOW);     // Pin2 LOW for forward
+      ledcWrite(pwmChannel2, motorBspeed);  // PWM speed control
     } else if (motorBdirection == 0) {
-      digitalWrite(motor2Pin2, motorBspeed);
-      ledcWrite(pwmChannel2, LOW);
-    } else {
-      digitalWrite(motor2Pin2, LOW);
-      ledcWrite(pwmChannel2, LOW);
+      // Backward direction
+      digitalWrite(motor2Pin2, HIGH);    // Pin2 HIGH for backward
+      int invertedSpeed = 255 - motorBspeed;  // Invert the speed
+      ledcWrite(pwmChannel2, invertedSpeed);  // PWM speed control
     }
   } else {
+    // Motor is OFF
     digitalWrite(motor2Pin2, LOW);
-    ledcWrite(pwmChannel2, LOW);
+    ledcWrite(pwmChannel2, LOW);  // Set PWM duty cycle to 0
   }
 }
 
@@ -137,7 +138,7 @@ void loop() {
 
         // Check for end of request (blank line)
         if (c == '\n' && header.endsWith("\r\n\r\n")) {
-          
+
           // Motor state control
           // (state) param required
           // (direction) param optional
@@ -145,10 +146,10 @@ void loop() {
           // http://192.168.1.225/configMotorA/?state=1&speed=180&direction=1
           if (header.indexOf("GET /configMotorA/") >= 0) {
             Serial.println("Setting motor A config");
-            
-            // Extract motorA state (required param)
+
+            // Extract motorA state (optional param)
             String reqMotorAStateStr = getValue(header, "state=");
-            int reqMotorAState = reqMotorAStateStr.toInt();
+            bool stateProvided = reqMotorAStateStr != "";
 
             // Extract motorA direction (optional param)
             String reqMotorADirectionStr = getValue(header, "direction=");
@@ -158,35 +159,38 @@ void loop() {
             String reqMotorASpeedStr = getValue(header, "speed=");
             bool speedProvided = reqMotorASpeedStr != "";
 
-            if (reqMotorAState == 1 || reqMotorAState == 0) {
-              motorAState = reqMotorAState;
+            if (stateProvided) {
+              int reqMotorAState = reqMotorAStateStr.toInt();
+              if (reqMotorAState == 1 || reqMotorAState == 0) {
+                motorAState = reqMotorAState;
+                Serial.println("Motor A state: " + String(motorAState));
+              }
             }
 
             if (directionProvided) {
               int reqMotorAdirection = reqMotorADirectionStr.toInt();
               if (reqMotorAdirection == 1 || reqMotorAdirection == 0) {
                 motorAdirection = reqMotorAdirection;
+                Serial.println("Motor A direction: " + String(motorAdirection));
               }
             }
 
             if (speedProvided) {
               int reqMotorAspeed = reqMotorASpeedStr.toInt();
-              reqMotorAspeed = constrain(reqMotorAspeed, 0, 255); // Limit speed between 0 and 255
-              if (reqMotorAspeed > 0) {
+              if (reqMotorAspeed >= 0) {
                 motorAspeed = reqMotorAspeed;
+                Serial.println("Motor A speed: " + String(motorAspeed));
               }
             }
-
-
           }
 
           // http://192.168.1.225/configMotorA/?state=1&speed=180&direction=1
           if (header.indexOf("GET /configMotorB/") >= 0) {
             Serial.println("Setting motor B config");
-            
+
             // Extract motorA state (required param)
             String reqMotorBStateStr = getValue(header, "state=");
-            int reqMotorBState = reqMotorBStateStr.toInt();
+            bool stateProvided = reqMotorBStateStr != "";
 
             // Extract motorA direction (optional param)
             String reqMotorBDirectionStr = getValue(header, "direction=");
@@ -196,31 +200,53 @@ void loop() {
             String reqMotorBSpeedStr = getValue(header, "speed=");
             bool speedProvided = reqMotorBSpeedStr != "";
 
-            if (reqMotorBState == 1 || reqMotorBState == 0) {
-              motorBState = reqMotorBState;
+            if (stateProvided) {
+              int reqMotorBState = reqMotorBStateStr.toInt();
+              if (reqMotorBState == 1 || reqMotorBState == 0) {
+                motorBState = reqMotorBState;
+                Serial.println("Motor B state: " + String(motorBState));
+              }
             }
 
             if (directionProvided) {
               int reqMotorBdirection = reqMotorBDirectionStr.toInt();
               if (reqMotorBdirection == 1 || reqMotorBdirection == 0) {
                 motorBdirection = reqMotorBdirection;
+                Serial.println("Motor B direction: " + String(motorBdirection));
               }
             }
 
             if (speedProvided) {
               int reqMotorBspeed = reqMotorBSpeedStr.toInt();
-              reqMotorBspeed = constrain(reqMotorBspeed, 0, 255); // Limit speed between 0 and 255
-              if (reqMotorBspeed > 0) {
+              if (reqMotorBspeed >= 0) {
                 motorBspeed = reqMotorBspeed;
+                Serial.println("Motor B speed: " + String(motorBspeed));
               }
             }
-
-
           }
 
           // Call motor control functions
           motorAControl();
           motorBControl();
+
+           // Now send a response back to the client with motor statuses
+          client.println("HTTP/1.1 200 OK");
+          client.println("Content-type:application/json");
+          client.println("Connection: close");
+          client.println();  // End of headers
+
+           // Now send a response back to the client with motor statuses
+          // Construct the JSON response
+          String jsonResponse = "{";
+          jsonResponse += "\"motorAState\": \"" + String(motorAState) + "\",";
+          jsonResponse += "\"motorAdirection\": \"" + String(motorAdirection) + "\",";
+          jsonResponse += "\"motorAspeed\": \"" + String(motorAspeed) + "\",";
+          jsonResponse += "\"motorBState\": \"" + String(motorBState) + "\",";
+          jsonResponse += "\"motorBdirection\": \"" + String(motorBdirection) + "\",";
+          jsonResponse += "\"motorBspeed\": " + String(motorBspeed);
+          jsonResponse += "}";
+
+          client.println(jsonResponse);
 
           // Close the connection
           client.stop();
