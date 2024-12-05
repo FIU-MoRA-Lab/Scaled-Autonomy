@@ -6,11 +6,15 @@
 #include <Adafruit_MPU6050.h>
 #include <Adafruit_Sensor.h>
 #include <Wire.h>
-#include <DHT11.h>
+#include "DHT.h"
+
+SemaphoreHandle_t xMutex = NULL;
 
 Adafruit_MPU6050 mpu;
-DHT11 dht11(4);
 #define irPin 34
+#define DHT11PIN 4
+
+DHT dht(DHT11PIN, DHT11);
 
 // Replace with your network credentials
 const char *ssid = "ALVA4eBn6fh";
@@ -27,7 +31,7 @@ int motorAspeed = 0, motorBspeed = 0;
 bool motorAdirForward = true, motorBdirForward = true;
 
 //================= Sensor variables =================
-JSONVar readings;
+// JSONVar readings;
 //================= Sensor variables =================
 
 void handleMotors() {
@@ -60,82 +64,57 @@ void handleMotors() {
   }
 }
 
-String getGyroReadings() {
-  sensors_event_t a, g, temp;
-  float gyroX = 0, gyroY = 0, gyroZ = 0;
-  float gyroXerror = 0.07, gyroYerror = 0.03, gyroZerror = 0.01;
+// String getGyroReadings() {
+//   sensors_event_t a, g, temp;
+//     mpu.getEvent(&a, &g, &temp);
 
-  mpu.getEvent(&a, &g, &temp);
+//     readings["gyroX"] = isnan(g.gyro.x) ? 0 : g.gyro.x;
+//     readings["gyroY"] = isnan(g.gyro.y) ? 0 : g.gyro.y;
+//     readings["gyroZ"] = isnan(g.gyro.z) ? 0 : g.gyro.z;
 
-  float gyroX_temp = g.gyro.x;
-  if (abs(gyroX_temp) > gyroXerror) {
-    gyroX += gyroX_temp / 50.00;
-  }
+//     return JSON.stringify(readings);
+// }
 
-  float gyroY_temp = g.gyro.y;
-  if (abs(gyroY_temp) > gyroYerror) {
-    gyroY += gyroY_temp / 70.00;
-  }
+// String getAccReadings() {
+//    sensors_event_t a, g, temp;
+//     mpu.getEvent(&a, &g, &temp);
 
-  float gyroZ_temp = g.gyro.z;
-  if (abs(gyroZ_temp) > gyroZerror) {
-    gyroZ += gyroZ_temp / 90.00;
-  }
+//     // Populate JSON object
+//     float accX_offset = 0.02, accY_offset = -0.01, accZ_offset = -0.4; // Adjust based on testing
+//     // accZ when device is stationary should be close to gravitational constant
+//     readings["accX"] = isnan(a.acceleration.x) ? 0 : (a.acceleration.x - accX_offset);
+//     readings["accY"] = isnan(a.acceleration.y) ? 0 : (a.acceleration.y - accY_offset);
+//     readings["accZ"] = isnan(a.acceleration.z) ? 0 : (a.acceleration.z - accZ_offset);
 
-  readings["gyroX"] = String(gyroX);
-  readings["gyroY"] = String(gyroY);
-  readings["gyroZ"] = String(gyroZ);
+//     // Serialize to JSON
+//     return JSON.stringify(readings);
+// }
 
-  String jsonString = JSON.stringify(readings);
-  return jsonString;
-}
+// String getTemperature() {
+//   sensors_event_t a, g, temp;
+//   mpu.getEvent(&a, &g, &temp);
+//   readings["mpu_temperature"] = temp.temperature;
+//   return String(temp.temperature);
+// }
 
-String getAccReadings() {
-  sensors_event_t a, g, temp;
-  float accX = 0, accY = 0, accZ = 0;
+// String getDht() {
+//   float dhtTemperature = 0, dhtHumidity = 0;
+//   // Attempt to read the temperature and humidity values from the DHT11 sensor.
+//   dhtHumidity = dht.readHumidity();
+//   dhtTemperature = dht.readTemperature();
 
-  mpu.getEvent(&a, &g, &temp);
-  // Get current acceleration values
-  accX = a.acceleration.x;
-  accY = a.acceleration.y;
-  accZ = a.acceleration.z;
-  readings["accX"] = String(accX);
-  readings["accY"] = String(accY);
-  readings["accZ"] = String(accZ);
-  String accString = JSON.stringify(readings);
-  return accString;
-}
+//   readings["dhtTemperature"] = String(dhtTemperature);
+//   readings["dhtHumidity"] = String(dhtHumidity);
+//   String accString = JSON.stringify(readings);
+//   return accString;
+// }
 
-String getTemperature() {
-  sensors_event_t a, g, temp;
-  mpu.getEvent(&a, &g, &temp);
-  readings["mpu_temperature"] = temp.temperature;
-  return String(temp.temperature);
-}
-
-String getDht() {
-  int dhtTemperature = 0, dhtHumidity = 0;
-  // Attempt to read the temperature and humidity values from the DHT11 sensor.
-  int result = dht11.readTemperatureHumidity(dhtTemperature, dhtHumidity);
-
-  if (result == 0) {
-    readings["dhtTemperature"] = String(dhtTemperature);
-    readings["dhtHumidity"] = String(dhtHumidity);
-    String accString = JSON.stringify(readings);
-    return accString;
-  } else {
-    readings["dhtTemperature"] = "ERROR";
-    readings["dhtHumidity"] = "ERROR";
-    String accString = JSON.stringify(readings);
-    return accString;
-  }
-}
-
-String getIr() {
-  int IRread = digitalRead(irPin);
-  readings["ir"] = IRread;
-  return String(IRread);
-}
+// bool getIr() {
+  // int IRread = analogRead(irPin);
+  // int IRdigital = (IRread > 2000) ? 1 : 0;
+  // readings["obstacle_present"] = IRdigital == 0;
+  // return IRdigital == 0;
+// }
 
 void onWebSocketEvent(AsyncWebSocket *server, AsyncWebSocketClient *client, AwsEventType type, void *arg, uint8_t *data, size_t len) {
   if (type == WS_EVT_CONNECT) {
@@ -231,59 +210,112 @@ void MotorControlTask(void *parameter) {
 void WebSocketTask(void *parameter) {
   while (true) {
     ws.cleanupClients();                   // Cleanup disconnected clients
-    vTaskDelay(100 / portTICK_PERIOD_MS);  // Delay for WebSocket cleanup (adjust as needed)
+    vTaskDelay(50 / portTICK_PERIOD_MS);  // Delay for WebSocket cleanup (adjust as needed)
   }
 }
 
-// FreeRTOS task for gyro readings
-void GyroReadingTask(void *parameter) {
-  while (true) {
-    getGyroReadings();
-    vTaskDelay(10 / portTICK_PERIOD_MS);
+// // FreeRTOS task for gyro readings
+// void GyroReadingTask(void *parameter) {
+//   while (true) {
+//     getGyroReadings();
+//     vTaskDelay(10 / portTICK_PERIOD_MS);
+//   }
+// }
+
+// // FreeRTOS task for acceleration readings
+// void AccReadingsTask(void *parameter) {
+//   while (true) {
+//     getAccReadings();
+//     vTaskDelay(10 / portTICK_PERIOD_MS);
+//   }
+// }
+
+// void MpuTempReadingsTask(void *parameter) {
+//   while (true) {
+//     getTemperature();
+//     vTaskDelay(5000 / portTICK_PERIOD_MS);
+//   }
+// }
+
+// void DhtReadingsTask(void *parameter) {
+//   while (true) {
+//     getDht();
+//     vTaskDelay(5000 / portTICK_PERIOD_MS);
+//   }
+// }
+
+// void IrReadingsTask(void *parameter) {
+//   while (true) {
+//     getIr();
+//     vTaskDelay(10 / portTICK_PERIOD_MS);
+//   }
+// }
+
+void GetSensorDataTask(void *paramter) {
+  sensors_event_t a, g, temp;
+  JSONVar readings;
+  for (;;) {
+    // Check if MPU6050 is ready to provide data
+    if (!mpu.getEvent(&a, &g, &temp)) {
+      Serial.println("Failed to read MPU6050 data!");
+      vTaskDelay(100 / portTICK_PERIOD_MS);
+      continue;
+    }
+
+    // Clear or reset JSON document before updating
+    readings = null;
+
+    // MPU
+    readings["gyroX"] = isnan(g.gyro.x) ? 0 : g.gyro.x;
+    readings["gyroY"] = isnan(g.gyro.y) ? 0 : g.gyro.y;
+    readings["gyroZ"] = isnan(g.gyro.z) ? 0 : g.gyro.y;
+    readings["accX"] = isnan(a.acceleration.x) ? 0 : a.acceleration.x;
+    readings["accY"] = isnan(a.acceleration.y) ? 0 : a.acceleration.y;
+    readings["accZ"] = isnan(a.acceleration.z) ? 0 : a.acceleration.z;
+    readings["mpu_temperature"] = isnan(temp.temperature) ? 0 : temp.temperature;
+
+    // Obstacle avoidance IR
+    int IRread = analogRead(irPin);
+    int IRdigital = (IRread > 2000) ? 1 : 0;
+    readings["obstacle_present"] = IRdigital == 0; 
+
+    // DHT Sensor
+    readings["dhtTemperature"] = isnan(dht.readHumidity()) ? 0 : dht.readHumidity();
+    readings["dhtHumidity"] = isnan(dht.readTemperature()) ? 0 : dht.readTemperature();
+
+    ws.textAll(JSON.stringify(readings));
+
+    // Monitor heap integrity
+    heap_caps_check_integrity_all(true);
+
+    // Delay for task timing
+    vTaskDelay(500 / portTICK_PERIOD_MS);
   }
 }
 
-// FreeRTOS task for acceleration readings
-void AccReadingsTask(void *parameter) {
-  while (true) {
-    getAccReadings();
-    vTaskDelay(10 / portTICK_PERIOD_MS);
-  }
-}
-
-void MpuTempReadingsTask(void *parameter) {
-  while (true) {
-    getTemperature();
-    vTaskDelay(5000 / portTICK_PERIOD_MS);
-  }
-}
-
-void DhtReadingsTask(void *parameter) {
-  while (true) {
-    getDht();
-    vTaskDelay(5000 / portTICK_PERIOD_MS);
-  }
-}
-
-void IrReadingsTask(void *parameter) {
-  while (true) {
-    getIr();
-    vTaskDelay(10 / portTICK_PERIOD_MS);
-  }
-}
-
-void SendSensorDataTask(void *parameter) {
-  while (true) {
-    String combinedData = JSON.stringify(readings);
-    ws.textAll(combinedData);
-    vTaskDelay(1000 / portTICK_PERIOD_MS);
-  }
-}
+// void SendSensorDataTask(void *parameter) {
+//   while (true) {
+//     String combinedData = JSON.stringify(readings);
+//     ws.textAll(combinedData);
+//     vTaskDelay(1000 / portTICK_PERIOD_MS);
+//   }
+// }
 
 //================= FreeRTOS tasks =================
 
 void setup() {
+
+  // Create mutex
+  xMutex = xSemaphoreCreateMutex();
+
+  if (xMutex == NULL) {
+    Serial.println("Mutex creation failed!");
+    return;
+  }
+
   Serial.begin(115200);
+
+  dht.begin();
 
   //================= Motor Setup =================
   // Motor pin setup
@@ -334,15 +366,19 @@ void setup() {
   // Create FreeRTOS tasks
   // xTaskCreate(task, taskName, stack size, params, priority, handle);
   // Create FreeRTOS tasks
-  xTaskCreate(WiFiTask, "WiFiTask", 4096, NULL, 3, NULL);                        // Highest priority
-  xTaskCreate(SendSensorDataTask, "SendSensorDataTask", 8192, NULL, 3, NULL);    // High priority
-  xTaskCreate(MotorControlTask, "MotorControlTask", 10000, NULL, 2, NULL);       // Medium priority
-  xTaskCreate(MpuTempReadingsTask, "MpuTempReadingsTask", 8192, NULL, 2, NULL);  // Medium priority
-  xTaskCreate(GyroReadingTask, "GyroReadingTask", 8192, NULL, 1, NULL);          // Low priority
-  xTaskCreate(AccReadingsTask, "AccReadingsTask", 8192, NULL, 1, NULL);          // Low priority
-  xTaskCreate(DhtReadingsTask, "DhtReadingsTask", 8192, NULL, 1, NULL);          // Low priority
-  xTaskCreate(IrReadingsTask, "IrReadingsTask", 8192, NULL, 1, NULL);            // Low priority
-  xTaskCreate(WebSocketTask, "WebSocketTask", 4096, NULL, 1, NULL);              // Low priority
+  xTaskCreate(WiFiTask, "WiFiTask", 4096, NULL, 3, NULL);  // Highest priority
+  // xTaskCreate(SendSensorDataTask, "SendSensorDataTask", 10000, NULL, 3, NULL);    // High priority
+  xTaskCreate(MotorControlTask, "MotorControlTask", 10000, NULL, 2, NULL);  // Medium priority
+  // xTaskCreate(MpuTempReadingsTask, "MpuTempReadingsTask", 8192, NULL, 2, NULL);  // Medium priority
+  // xTaskCreate(GyroReadingTask, "GyroReadingTask", 8192, NULL, 1, NULL);          // Low priority
+  // xTaskCreate(AccReadingsTask, "AccReadingsTask", 8192, NULL, 1, NULL);          // Low priority
+  // xTaskCreate(DhtReadingsTask, "DhtReadingsTask", 8192, NULL, 1, NULL);          // Low priority
+  // xTaskCreate(IrReadingsTask, "IrReadingsTask", 8192, NULL, 1, NULL);            // Low priority
+  xTaskCreate(GetSensorDataTask, "GetSensorDataTask", 10000, NULL, 3, NULL);  // High priority
+  xTaskCreate(WebSocketTask, "WebSocketTask", 4096, NULL, 1, NULL);           // Low priority
 }
 
-void loop() {}
+void loop() {
+  // Serial.println(heap_caps_get_free_size(MALLOC_CAP_DEFAULT));
+  // delay(500);
+}
